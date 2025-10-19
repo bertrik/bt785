@@ -34,7 +34,7 @@ class EncryptedPacket():
     encrypted: bytes
 
     def pack(self) -> bytes:
-        b = bytearray
+        b = bytearray()
         b += self.security_flag.to_bytes(1)
         b += self.iv
         b += self.encrypted
@@ -118,22 +118,17 @@ class PacketHandler(AbstractPacketHandler):
 
     @override
     def send_packet(self, security_flag: int, data: bytes) -> bool:
-        buffer = bytearray()
-
-        # first: security flag
         key = self._find_key(security_flag)
         if not key:
             return False
-        buffer += security_flag.to_bytes(1)
 
-        # second: iv
         iv = secrets.token_bytes(16)
-        buffer += iv
-
-        # finally: padded and encrypted data
-        padded = Padding.pad(data, 16)
         cipher = AES.new(key, AES.MODE_CBC, iv)
-        buffer += cipher.encrypt(padded)
+        padded = Padding.pad(data, 16)
+        padded = cipher.encrypt(padded)
+
+        encrypted = EncryptedPacket(security_flag, iv, padded)
+        buffer = encrypted.pack()
 
         return self._send_fragments(buffer)
 
