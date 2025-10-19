@@ -24,7 +24,7 @@ class AbstractBleClient(ABC):
         pass
 
     @abstractmethod
-    def subscribe(self, callback: Callable[[bytes], None]) -> None:
+    def subscribe(self, subscriber: Callable[[bytes], None]) -> None:
         pass
 
 
@@ -108,7 +108,7 @@ class PacketHandler(AbstractPacketHandler):
         # parse encryption layer
         encrypted = EncryptedPacket.parse(encrypted_raw)
         if not encrypted:
-            print(f"Could not decrypt!")
+            print(f"Could not parse encrypted fragment: {encrypted_raw.hex()}")
             return
 
         # decrypt and notify
@@ -307,17 +307,17 @@ class DpType(Enum):
     SALT_PPM = (0x79, 2, "Salt", 1, "ppm")
     SALT_SG = (0x7E, 2, "SG", 0.001, "kg/l")
 
-    def __init__(self, id: int, dptype: int, description: str, scale: float, unit: str):
-        self.id = id
+    def __init__(self, dpid: int, dptype: int, description: str, scale: float, unit: str):
+        self.dpid = dpid
         self.dptype = dptype
         self.description = description
         self.scale = scale
         self.unit = unit
 
     @classmethod
-    def from_code(cls, id: int):
+    def from_code(cls, dpid: int):
         for member in cls:
-            if member.id == id:
+            if member.dpid == dpid:
                 return member
         return None
 
@@ -332,18 +332,18 @@ class DpData:
     def parse(cls, raw: bytes):
         if len(raw) < 12:
             return None
-        id, type, length = struct.unpack(">BBH", raw[7:11])
+        dpid, dptype, length = struct.unpack(">BBH", raw[7:11])
         data = raw[11:]
-        return cls(id, type, data)
+        return cls(dpid, dptype, data)
 
-    def intValue(self) -> int:
+    def int_value(self) -> int:
         return struct.unpack(">I", self.data)[0]
 
     def __repr__(self):
         dptype = DpType.from_code(self.id)
         if dptype:
-            value = dptype.scale * self.intValue()
-            return f"{dptype.id}: {dptype.description}={value} {dptype.unit}"
+            value = dptype.scale * self.int_value()
+            return f"{dptype.dpid}: {dptype.description}={value} {dptype.unit}"
         return f"DpData(id={self.id},type={self.type},data={self.data.hex()})"
 
 
@@ -385,6 +385,7 @@ class BleakBleClient(AbstractBleClient):
         for subscriber in self.subscribers:
             subscriber(b)
 
+    @override
     def subscribe(self, subscriber):
         self.subscribers.append(subscriber)
 
@@ -398,10 +399,11 @@ def _handle_frame(cmd: int, data: bytes):
         print(f"Unhandled command {cmd:04x}: {data.hex()}")
 
 
-def main():
-    WRITE_CHAR = "00000001-0000-1001-8001-00805f9b07d0"
-    NOTIFY_CHAR = "00000002-0000-1001-8001-00805f9b07d0"
+WRITE_CHAR = "00000001-0000-1001-8001-00805f9b07d0"
+NOTIFY_CHAR = "00000002-0000-1001-8001-00805f9b07d0"
 
+
+def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("-d", "--device", help="The BT785 bluetooth address", default="DC:23:4F:69:6D:E7")
     parser.add_argument("-u", "--uuid", help="The BT785 16-character uuid", default="ebc1a468b06623eb")

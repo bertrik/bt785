@@ -106,10 +106,10 @@ class DpDataTest(unittest.TestCase):
         raw = bytes.fromhex("00f00000008000740200040000028e")
         dp = DpData.parse(raw)
         print(dp)
-        value = dp.intValue()
-        self.assertEqual(0x74, dp.id)
-        self.assertEqual(2, dp.type)
-        self.assertEqual(654, dp.intValue())
+        value = dp.int_value()
+        self.assertEqual(0x74, dp.dpid)
+        self.assertEqual(2, dp.dptype)
+        self.assertEqual(654, dp.int_value())
 
 
 if __name__ == '__main__':
