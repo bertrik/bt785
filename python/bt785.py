@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 import asyncio
 import secrets
 import struct
@@ -304,7 +305,6 @@ class DpType(Enum):
     TDS = (0x6F, 2, "TDS", 1, "ppm")
     EC = (0x74, 2, "EC", 1, "us/cm")
     SALT_PPM = (0x79, 2, "Salt", 1, "ppm")
-    # SALT_PCT = (0x79, 2, "Salt", 1, "ppm")
     SALT_SG = (0x7E, 2, "SG", 0.001, "kg/l")
 
     def __init__(self, id: int, dptype: int, description: str, scale: float, unit: str):
@@ -389,35 +389,37 @@ class BleakBleClient(AbstractBleClient):
         self.subscribers.append(subscriber)
 
 
-DEV_ID = 'bf6a84mfykubbij3'
-LOCAL_KEY = '<z)o}Ezmuw01.TxQ'
-MAC = 'DC:23:4F:69:6D:E7'
-UUID = 'ebc1a468b06623eb'
-
-WRITE_CHAR = "00000001-0000-1001-8001-00805f9b07d0"  # likely write
-NOTIFY_CHAR = "00000002-0000-1001-8001-00805f9b07d0"  # has CCC -> notify
-
-
-def _handle_dp(cmd: int, data: bytes):
+def _handle_frame(cmd: int, data: bytes):
     if cmd == 0x8006:
         dpdata = DpData.parse(data)
         if dpdata:
             print(f"dpdata = {dpdata}")
+    else:
+        print(f"Unhandled command {cmd:04x}: {data.hex()}")
 
 
 def main():
-    login_key = LOCAL_KEY.encode()[:6]
-    bleclient = BleakBleClient(MAC, WRITE_CHAR, NOTIFY_CHAR)
+    WRITE_CHAR = "00000001-0000-1001-8001-00805f9b07d0"
+    NOTIFY_CHAR = "00000002-0000-1001-8001-00805f9b07d0"
+
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument("-d", "--device", help="The BT785 bluetooth address", default="DC:23:4F:69:6D:E7")
+    parser.add_argument("-u", "--uuid", help="The BT785 16-character uuid", default="ebc1a468b06623eb")
+    parser.add_argument("-k", "--key", help="The BT785 local key", default="<z)o}Ezmuw01.TxQ")
+    args = parser.parse_args()
+
+    login_key = args.key.encode()[:6]
+    bleclient = BleakBleClient(args.device, WRITE_CHAR, NOTIFY_CHAR)
     try:
         ph = PacketHandler(bleclient, login_key)
         ch = CommandHandler(ph)
-        ch.subscribe(_handle_dp)
+        ch.subscribe(_handle_frame)
 
         bleclient.connect()
         device_info = ch.request_device_info()
         print(f"device_info = {device_info}")
         if device_info:
-            pair_result = ch.pair(UUID, login_key, device_info.devid)
+            pair_result = ch.pair(args.uuid, login_key, device_info.devid)
             if pair_result:
                 print(f"pair result= {pair_result}")
                 while bleclient.is_connected():
