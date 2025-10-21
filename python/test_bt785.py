@@ -107,8 +107,8 @@ class DpDataTest(unittest.TestCase):
         dp = DpData.parse(raw)
         print(dp)
         value = dp.int_value()
-        self.assertEqual(0x74, dp.dpid)
-        self.assertEqual(2, dp.dptype)
+        self.assertEqual(0x74, dp.dp_id)
+        self.assertEqual(2, dp.dp_type)
         self.assertEqual(654, dp.int_value())
 
 

@@ -324,8 +324,8 @@ class DpType(Enum):
 
 @dataclass
 class DpData:
-    id: int
-    type: int
+    dp_id: int
+    dp_type: int
     data: bytes
 
     @classmethod
@@ -340,11 +340,11 @@ class DpData:
         return struct.unpack(">I", self.data)[0]
 
     def __repr__(self):
-        dptype = DpType.from_code(self.id)
+        dptype = DpType.from_code(self.dp_id)
         if dptype:
             value = dptype.scale * self.int_value()
             return f"{dptype.dpid}: {dptype.description}={value} {dptype.unit}"
-        return f"DpData(id={self.id},type={self.type},data={self.data.hex()})"
+        return f"DpData(id={self.dp_id},type={self.dp_type},data={self.data.hex()})"
 
 
 class BleakBleClient(AbstractBleClient):
