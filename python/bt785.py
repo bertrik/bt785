@@ -10,7 +10,8 @@ from dataclasses import dataclass
 from enum import Enum
 from hashlib import md5
 from struct import pack, unpack
-from typing import Callable, override
+from typing import Callable, List
+from typing import override
 
 from Crypto.Cipher import AES
 from Crypto.Util import Padding
@@ -348,45 +349,59 @@ class DpData:
 
 
 class BleakBleClient(AbstractBleClient):
-    def __init__(self, address, write_char: str, notify_char: str):
-        self.client = BleakClient(address)
-        self.write_char = write_char
-        self.notify_char = notify_char
-        self.subscribers = []
+    def __init__(self, address: str, write_char: str, notify_char: str):
+        self.address: str = address
+        self.write_char: str = write_char
+        self.notify_char: str = notify_char
+        self.subscribers: List[Callable[[bytes], None]] = []
 
-        # Create a dedicated event loop in another thread
+        # Each client instance has its own event loop thread
         self.loop = asyncio.new_event_loop()
         self._thread = threading.Thread(target=self.loop.run_forever, daemon=True)
         self._thread.start()
 
+        self.client: BleakClient = BleakClient(address)
+
     def _run(self, coro):
-        """Run a coroutine in the event-loop thread and wait for result."""
+        """Run a coroutine safely in the background event loop thread."""
         future = asyncio.run_coroutine_threadsafe(coro, self.loop)
-        return future.result()  # If it raises, let it raise normally
+        return future.result()
 
     def connect(self) -> None:
+        print(f"Connecting to BLE device {self.address}...")
         self._run(self.client.connect())
+        if not self.client.is_connected:
+            raise RuntimeError("Failed to connect to BLE device")
+        print("Connected successfully!")
         self._run(self.client.start_notify(self.notify_char, self._notify_callback))
 
     def disconnect(self) -> None:
-        self._run(self.client.disconnect())
-        self.loop.call_soon_threadsafe(self.loop.stop)
-        self._thread.join()
+        try:
+            if self.client.is_connected:
+                print("Disconnecting...")
+                self._run(self.client.disconnect())
+        except Exception as e:
+            print(f"Error during disconnect: {e}")
+        finally:
+            self.loop.call_soon_threadsafe(self.loop.stop)
+            self._thread.join(timeout=2)
 
     def is_connected(self) -> bool:
         return self.client.is_connected
 
     def send_data(self, data: bytes) -> None:
+        if not self.client.is_connected:
+            print("Cannot send data — not connected.")
+            return
         print(f"BLE sending: {data.hex()}")
         self._run(self.client.write_gatt_char(self.write_char, data))
 
-    def _notify_callback(self, _characteristic: BleakGATTCharacteristic, data: bytearray):
+    def _notify_callback(self, _characteristic: BleakGATTCharacteristic, data: bytearray) -> None:
         b = bytes(data)
         for subscriber in self.subscribers:
             subscriber(b)
 
-    @override
-    def subscribe(self, subscriber) -> None:
+    def subscribe(self, subscriber: Callable[[bytes], None]) -> None:
         self.subscribers.append(subscriber)
 
 
@@ -411,23 +426,42 @@ def main():
     args = parser.parse_args()
 
     login_key = args.key.encode()[:6]
-    bleclient = BleakBleClient(args.device, WRITE_CHAR, NOTIFY_CHAR)
-    try:
-        ph = PacketHandler(bleclient, login_key)
-        ch = CommandHandler(ph)
-        ch.subscribe(_handle_frame)
+    reconnect_delay = 5  # seconds
 
-        bleclient.connect()
-        device_info = ch.request_device_info()
-        print(f"device_info = {device_info}")
-        if device_info:
-            pair_result = ch.pair(args.uuid, login_key, device_info.devid)
-            if pair_result:
-                print(f"pair result= {pair_result}")
-                while bleclient.is_connected():
-                    time.sleep(1)
-    finally:
-        bleclient.disconnect()
+    while True:
+        bleclient = None
+        try:
+            bleclient = BleakBleClient(args.device, WRITE_CHAR, NOTIFY_CHAR)
+            ph = PacketHandler(bleclient, login_key)
+            ch = CommandHandler(ph)
+            ch.subscribe(_handle_frame)
+            bleclient.connect()
+
+            device_info = ch.request_device_info()
+            print(f"device_info = {device_info}")
+            if device_info:
+                pair_result = ch.pair(args.uuid, login_key, device_info.devid)
+                print(f"pair result = {pair_result}")
+
+            print("Connected and initialized. Monitoring...")
+            while bleclient.is_connected():
+                time.sleep(1)
+
+            print("Connection lost, will attempt reconnect...")
+            time.sleep(reconnect_delay)
+
+        except KeyboardInterrupt:
+            print("Exiting...")
+            if bleclient:
+                bleclient.disconnect()
+            break
+
+        except Exception as e:
+            print(f"Error: {e}")
+            if bleclient:
+                bleclient.disconnect()
+            print(f"Retrying in {reconnect_delay}s...")
+            time.sleep(reconnect_delay)
 
 
 if __name__ == "__main__":
