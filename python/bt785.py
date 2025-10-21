@@ -29,7 +29,7 @@ class AbstractBleClient(ABC):
 
 
 @dataclass
-class EncryptedPacket():
+class EncryptedPacket:
     security_flag: int
     iv: bytes
     encrypted: bytes
@@ -95,7 +95,7 @@ class PacketHandler(AbstractPacketHandler):
             shift += 7
         return result, offset
 
-    def handle_incoming_data(self, data: bytes):
+    def handle_incoming_data(self, data: bytes) -> None:
         # parse fragmentation layer
         packetnr = data[0]
         if packetnr != 0:
@@ -131,7 +131,8 @@ class PacketHandler(AbstractPacketHandler):
         encrypted = EncryptedPacket(security_flag, iv, padded)
         buffer = encrypted.pack()
 
-        return self._send_fragments(buffer)
+        self._send_fragments(buffer)
+        return True
 
     def _decrypt(self, encrypted: EncryptedPacket) -> bytes | None:
         key = self._find_key(encrypted.security_flag)
@@ -149,7 +150,7 @@ class PacketHandler(AbstractPacketHandler):
             case _:
                 return None
 
-    def _send_fragments(self, data) -> bool:
+    def _send_fragments(self, data) -> None:
         packet_nr = 0
         maxsize = 23
         b = bytearray()
@@ -162,14 +163,13 @@ class PacketHandler(AbstractPacketHandler):
             b += d.to_bytes(1)
         if len(b) > 1:
             self._send_one_fragment(b)
-        return True
 
     def _send_one_fragment(self, data):
         self.bleclient.send_data(data)
 
 
 @dataclass
-class CommandFrame():
+class CommandFrame:
     sn: int  # serial number
     rn: int  # reference number
     cmd: int
@@ -229,7 +229,7 @@ class DeviceInfo:
         return cls(srand, devid)
 
 
-class CommandHandler():
+class CommandHandler:
     PROTOCOL_VERSION = 2
 
     CMD_DEVICE_INFO = 0
@@ -247,10 +247,10 @@ class CommandHandler():
         self._subscribers = []
         self.packet_handler.subscribe(self.handle_incoming_packet)
 
-    def subscribe(self, subscriber: Callable[[int, bytes], None]):
+    def subscribe(self, subscriber: Callable[[int, bytes], None]) -> None:
         self._subscribers.append(subscriber)
 
-    def handle_incoming_packet(self, data: bytes):
+    def handle_incoming_packet(self, data: bytes) -> None:
         frame = CommandFrame.parse(data)
         if frame:
             # our own command/response processing
@@ -364,11 +364,11 @@ class BleakBleClient(AbstractBleClient):
         future = asyncio.run_coroutine_threadsafe(coro, self.loop)
         return future.result()  # If it raises, let it raise normally
 
-    def connect(self):
+    def connect(self) -> None:
         self._run(self.client.connect())
         self._run(self.client.start_notify(self.notify_char, self._notify_callback))
 
-    def disconnect(self):
+    def disconnect(self) -> None:
         self._run(self.client.disconnect())
         self.loop.call_soon_threadsafe(self.loop.stop)
         self._thread.join()
@@ -376,7 +376,7 @@ class BleakBleClient(AbstractBleClient):
     def is_connected(self) -> bool:
         return self.client.is_connected
 
-    def send_data(self, data: bytes):
+    def send_data(self, data: bytes) -> None:
         print(f"BLE sending: {data.hex()}")
         self._run(self.client.write_gatt_char(self.write_char, data))
 
@@ -386,11 +386,11 @@ class BleakBleClient(AbstractBleClient):
             subscriber(b)
 
     @override
-    def subscribe(self, subscriber):
+    def subscribe(self, subscriber) -> None:
         self.subscribers.append(subscriber)
 
 
-def _handle_frame(cmd: int, data: bytes):
+def _handle_frame(cmd: int, data: bytes) -> None:
     if cmd == 0x8006:
         dpdata = DpData.parse(data)
         if dpdata:
