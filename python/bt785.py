@@ -53,6 +53,19 @@ class EncryptedPacket:
 
 
 class AbstractPacketHandler(ABC):
+    def __init__(self, login_key: bytes):
+        self.login_key = login_key
+        self.keys = {4: md5(login_key).digest()}
+
+    def set_key1(self, key1: bytes) -> None:
+        self.keys[1] = key1
+
+    def set_srand(self, srand: bytes) -> None:
+        self.keys[5] = md5(self.login_key + srand).digest()
+
+    def _find_key(self, security_flag) -> bytes | None:
+        return self.keys.get(security_flag)
+
     @abstractmethod
     def subscribe(self, subscriber: Callable[[bytes], None]) -> None:
         pass
@@ -61,23 +74,14 @@ class AbstractPacketHandler(ABC):
     def send_packet(self, security_flag: int, data: bytes) -> bool:
         pass
 
-    @abstractmethod
-    def set_srand(self, srand):
-        pass
-
 
 class PacketHandler(AbstractPacketHandler):
     def __init__(self, bleclient: AbstractBleClient, login_key: bytes):
+        super().__init__(login_key)
         self.bleclient = bleclient
-        self.login_key = login_key
         self.protocol_version = 2
-        self.srand = None
         self.subscribers = []
         self.bleclient.subscribe(self.handle_incoming_data)
-
-    @override
-    def set_srand(self, srand: bytes) -> None:
-        self.srand = srand
 
     @override
     def subscribe(self, subscriber: Callable[[bytes], None]) -> None:
@@ -141,15 +145,6 @@ class PacketHandler(AbstractPacketHandler):
             return None
         cipher = AES.new(key, AES.MODE_CBC, encrypted.iv)
         return bytes(cipher.decrypt(encrypted.encrypted))
-
-    def _find_key(self, security_flag) -> bytes | None:
-        match security_flag:
-            case 4:
-                return md5(self.login_key).digest()
-            case 5:
-                return md5(self.login_key + self.srand).digest()
-            case _:
-                return None
 
     def _send_fragments(self, data) -> None:
         packet_nr = 0
@@ -221,13 +216,15 @@ class CommandFrame:
 @dataclass
 class DeviceInfo:
     srand: bytes
+    key1: bytes
     devid: bytes
 
     @classmethod
     def parse(cls, data: bytes):
         srand = data[6:12]
+        key1 = data[14:30]
         devid = data[55:71]
-        return cls(srand, devid)
+        return cls(srand, key1, devid)
 
 
 class CommandHandler:
@@ -276,6 +273,7 @@ class CommandHandler:
             device_info = DeviceInfo.parse(response.data)
             if device_info:
                 self._device_info = device_info
+                self.packet_handler.set_key1(device_info.key1)
                 self.packet_handler.set_srand(device_info.srand)
             return device_info
         return None
