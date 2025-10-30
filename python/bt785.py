@@ -218,13 +218,15 @@ class DeviceInfo:
     srand: bytes
     key1: bytes
     devid: bytes
+    mac: bytes
 
     @classmethod
     def parse(cls, data: bytes):
         srand = data[6:12]
         key1 = data[14:30]
         devid = data[55:71]
-        return cls(srand, key1, devid)
+        mac = data[89:95][::-1]
+        return cls(srand, key1, devid, mac)
 
 
 class CommandHandler:
