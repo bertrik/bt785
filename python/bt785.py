@@ -256,10 +256,10 @@ class CommandHandler:
                 if self.active_command.cmd == frame.cmd:
                     self.active_response = frame
                     self.event.set()
-
-            # notify our subscribers
-            for subscriber in self._subscribers:
-                subscriber(frame.cmd, frame.data)
+            else:
+                # notify our subscribers
+                for subscriber in self._subscribers:
+                    subscriber(frame.cmd, frame.data)
 
     def _get_sn(self) -> int:
         self._sn += 1
