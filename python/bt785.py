@@ -14,7 +14,6 @@ from typing import Callable, List
 from typing import override
 
 from Crypto.Cipher import AES
-from Crypto.Util import Padding
 from bleak import BleakClient, BleakGATTCharacteristic
 
 
@@ -130,7 +129,8 @@ class PacketHandler(AbstractPacketHandler):
 
         iv = secrets.token_bytes(16)
         cipher = AES.new(key, AES.MODE_CBC, iv)
-        padded = Padding.pad(data, 16)
+        pad_len = (-len(data)) % 16
+        padded = data + bytes([pad_len]) * pad_len
         padded = cipher.encrypt(padded)
 
         encrypted = EncryptedPacket(security_flag, iv, padded)
