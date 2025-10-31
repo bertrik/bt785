@@ -212,6 +212,9 @@ class CommandFrame:
             return None
         return cls(sn, rn, cmd, data)
 
+    def matches_command(self, command) -> bool:
+        return command and self.cmd == command.cmd and self.rn == command.sn
+
 
 @dataclass
 class DeviceInfo:
@@ -237,7 +240,6 @@ class CommandHandler:
 
     def __init__(self, packet_handler: AbstractPacketHandler):
         self.packet_handler = packet_handler
-        self._device_info = None
         self._sn = 0
         # command/response handling
         self.event = None
@@ -254,10 +256,9 @@ class CommandHandler:
         frame = CommandFrame.parse(data)
         if frame:
             # our own command/response processing
-            if self.active_command:
-                if self.active_command.cmd == frame.cmd:
-                    self.active_response = frame
-                    self.event.set()
+            if frame.matches_command(self.active_command):
+                self.active_response = frame
+                self.event.set()
             else:
                 # notify our subscribers
                 for subscriber in self._subscribers:
@@ -274,7 +275,6 @@ class CommandHandler:
         if response:
             device_info = DeviceInfo.parse(response.data)
             if device_info:
-                self._device_info = device_info
                 self.packet_handler.set_key1(device_info.key1)
                 self.packet_handler.set_srand(device_info.srand)
             return device_info
