@@ -231,6 +231,10 @@ class DeviceInfo:
         mac = data[89:95][::-1]
         return cls(srand, key1, devid, mac)
 
+    def __repr__(self):
+        return (f"DeviceInfo(srand={self.srand.hex()},key1={self.key1.hex()},"
+                f"devid='{self.devid.decode()}',mac={self.mac.hex(':')})")
+
 
 class CommandHandler:
     PROTOCOL_VERSION = 2
