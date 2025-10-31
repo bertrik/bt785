@@ -3,7 +3,7 @@
 import unittest
 from typing import Callable
 
-from bt785 import CommandFrame, PacketHandler, DpData, CommandHandler, AbstractBleClient
+from bt785 import CommandFrame, PacketHandler, DpData, CommandHandler, AbstractBleClient, AbstractPacketHandler
 
 LOCAL_KEY = '<z)o}Ezmuw01.TxQ'
 LOGIN_KEY = LOCAL_KEY.encode('utf-8')[:6]
@@ -16,6 +16,22 @@ class BleClientStub(AbstractBleClient):
 
     def send_data(self, data: bytes) -> None:
         print(f"BleClientStub.send_data(data={data.hex}")
+
+
+class PacketHandlerStub(AbstractPacketHandler):
+    def __init__(self):
+        super().__init__(LOGIN_KEY)
+
+    def subscribe(self, subscriber: Callable[[bytes], None]) -> None:
+        pass
+
+    def send_packet(self, security_flag: int, data: bytes) -> bool:
+        print(f"send_packet(security_flag={security_flag},data={data.hex()})")
+        return True
+
+
+def _print_incoming_cmd(cmd: int, data: bytes):
+    print(f"Incoming cmd: cmd={cmd:04X}, data={data.hex()}")
 
 
 class CommandFrameTest(unittest.TestCase):
@@ -58,7 +74,7 @@ class PacketHandlerTest(unittest.TestCase):
         handler.handle_incoming_data(data)
 
         commandhandler = CommandHandler(handler)
-        commandhandler.subscribe(self._print_incoming_cmd)
+        commandhandler.subscribe(_print_incoming_cmd)
 
     def test_large_packet(self):
         data = bytes.fromhex("00414e05"
@@ -86,11 +102,8 @@ class PacketHandlerTest(unittest.TestCase):
                              "0000000000e76d694f23dc0095a60202")
         ph = PacketHandler(BleClientStub(), LOGIN_KEY)
         ch = CommandHandler(ph)
-        ch.subscribe(self._print_incoming_cmd)
+        ch.subscribe(_print_incoming_cmd)
         ch.handle_incoming_packet(data)
-
-    def _print_incoming_cmd(self, cmd: int, data: bytes):
-        print(f"Incoming cmd: cmd={cmd:04X}, data={data.hex()}")
 
     def _print_decrypted(self, data: bytes):
         print(f"raw data = {data.hex()}")
@@ -110,6 +123,16 @@ class DpDataTest(unittest.TestCase):
         self.assertEqual(0x74, dp.dp_id)
         self.assertEqual(2, dp.dp_type)
         self.assertEqual(654, dp.int_value())
+
+
+class CommandHandlerTest(unittest.TestCase):
+
+    def test_incoming_data(self):
+        data = bytes.fromhex("00000028000000008006000f00f0000000800008020004000000c8e3b0 030303")
+        pkt_handler = PacketHandlerStub()
+        cmd_handler = CommandHandler(pkt_handler)
+        cmd_handler.subscribe(_print_incoming_cmd)
+        cmd_handler.handle_incoming_packet(data)
 
 
 if __name__ == '__main__':
