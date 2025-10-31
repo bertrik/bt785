@@ -343,7 +343,7 @@ class DpData:
     def __repr__(self):
         dptype = DpType.from_code(self.dp_id)
         if dptype:
-            value = dptype.scale * self.int_value()
+            value = round(dptype.scale * self.int_value(), 3)
             return f"{dptype.dpid}: {dptype.description}={value} {dptype.unit}"
         return f"DpData(id={self.dp_id},type={self.dp_type},data={self.data.hex()})"
 
